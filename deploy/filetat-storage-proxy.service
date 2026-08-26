@@ -1,0 +1,15 @@
+[Unit]
+Description=filetat storage proxy (HMAC-gated MinIO download)
+After=network.target
+
+[Service]
+Type=simple
+User=filetat
+WorkingDirectory=/opt/filetat-storage-proxy
+EnvironmentFile=/opt/filetat-storage-proxy/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
