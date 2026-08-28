@@ -8,8 +8,31 @@ const PORT = process.env.PORT || 8787;
 const SECRET = process.env.DOWNLOAD_TOKEN_SECRET;
 const BUCKET = process.env.MINIO_BUCKET;
 
-if (!SECRET || !BUCKET) {
-  console.error("DOWNLOAD_TOKEN_SECRET and MINIO_BUCKET are required — check .env");
+function isValidUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// Fail loudly at startup instead of only failing (cryptically) on the first
+// real request — this is exactly the class of bug that cost real debugging
+// time: the server started fine with a bad/missing MINIO_ENDPOINT, and every
+// download just silently 404'd with "Invalid URL" in the logs.
+const problems = [];
+if (!SECRET) problems.push("DOWNLOAD_TOKEN_SECRET дутуу байна");
+if (!BUCKET) problems.push("MINIO_BUCKET дутуу байна");
+if (!isValidUrl(process.env.MINIO_ENDPOINT)) {
+  problems.push(`MINIO_ENDPOINT буруу URL байна: "${process.env.MINIO_ENDPOINT}" (жишээ: http://127.0.0.1:9000)`);
+}
+if (!process.env.MINIO_ACCESS_KEY || !process.env.MINIO_SECRET_KEY) {
+  problems.push("MINIO_ACCESS_KEY / MINIO_SECRET_KEY дутуу байна");
+}
+if (problems.length > 0) {
+  console.error("Тохиргооны алдаа (.env):\n" + problems.map((p) => `  - ${p}`).join("\n"));
   process.exit(1);
 }
 
@@ -44,6 +67,11 @@ function isValidToken(key, expires, token) {
 }
 
 app.get("/download/:key", async (req, res) => {
+  // Every response here is either time-limited (the signed URL expires) or a
+  // per-request error — Cloudflare/browsers must never cache any of it, or a
+  // transient failure gets served back as a permanent one.
+  res.setHeader("Cache-Control", "no-store");
+
   const key = decodeURIComponent(req.params.key);
   const { expires, token } = req.query;
 
